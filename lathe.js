@@ -37,16 +37,46 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener("resize", () => engine.resize());
 });
 
+class Curve {
+    constructor(p) {
+        this.pts = [p];        
+        this.curvePts = null;
+    }
+
+    addPoint(p) {
+        let d = p.subtract(this.pts[this.pts.length-1]).length();        
+        if(d<0.1) return;
+        this.pts.push(p.clone());
+        if(this.pts.length>=4) {
+            let curve = BABYLON.Curve3.CreateCatmullRomSpline(this.pts, 10, false);
+            this.curvePts = curve.getPoints();
+        }
+    }
+
+    getPoint(t) {
+        let pts = this.curvePts || this.pts;
+        let n = pts.length;
+        if(n<=2) {
+            if(n==1) return pts[0];
+            else return BABYLON.Vector3.Lerp(pts[0],pts[1],t);
+        } else {
+            if(t>=1.0) return pts[n-1];
+            let s = (n-1) * t;
+            let j = Math.floor(s);
+            return BABYLON.Vector3.Lerp(pts[j],pts[j+1],s-j);
+        }
+    }
+}
 
 class Surface {
-    constructor(curvePts, n, m) {
+    constructor(curve, n, m) {
         this.n = n;
         this.m = m;
         this.positions = new Array(n*m*3).fill();
         this.normals = new Array(n*m*3).fill(0);
         this.uvs = new Array(n*m*2).fill(0);
         this.indices = new Array((n-1)*(m-1)*6).fill(0);
-        this.curvePts = curvePts;
+        this.curve = curve;
         // create indices
         let indices = this.indices;
         let ik = 0;
@@ -81,9 +111,8 @@ class Surface {
     computePoints() {
         let pts = [];
         for(let i=0; i<this.n; i++) {
-            let q = (this.curvePts.length-1)*i/this.n;
-            let j = Math.floor(q);
-            pts.push(BABYLON.Vector3.Lerp(this.curvePts[j], this.curvePts[j+1], q-j));
+            let p = this.curve.getPoint(i/(this.n-1));
+            pts.push(p);
         }
         let csn = new Array(2*this.m);
         for(let j=0; j<this.m; j++) {
@@ -109,17 +138,96 @@ class Surface {
             positions, this.indices, this.normals);       
     }
 
-    setCurvePts(curvePts) {
-        this.curvePts = curvePts;
+    setCurve(curve) {
+        this.curve = curve;
         this.computePoints();
         this.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, this.positions);
         this.mesh.updateVerticesData(BABYLON.VertexBuffer.NormalKind, this.normals);    
 
     }
-
-
 };
 
+class Drawing {
+    constructor() {
+        this.strokes = [];
+
+    }    
+    startStroke(p) {
+        let stroke = { surface : null, curve : new Curve(p) };
+        this.stroke = stroke;
+        this.strokes.push(stroke);
+    }
+
+    lineTo(p) {
+        let stroke = this.stroke;
+        if(!stroke) return;
+        stroke.curve.addPoint(p);
+        if(stroke.curve.pts.length>=2) {
+            if(!stroke.surface) stroke.surface = new Surface(stroke.curve,100,100);
+            else stroke.surface.setCurve(stroke.curve);
+        }
+    }
+    
+}
+
+let drawing = new Drawing();
+
+
+function createGrid(scene) {
+    
+    let Color4 = BABYLON.Color4;
+    let Vector3 = BABYLON.Vector3;
+     
+    let m = 100;
+    let r = 10;
+    let pts = [];
+    let colors = [];
+    let c1 = new Color4(0.7,0.7,0.7,0.5);
+    let c2 = new Color4(0.5,0.5,0.5,0.25);
+    let cRed   = new Color4(0.8,0.1,0.1);
+    let cGreen = new Color4(0.1,0.8,0.1);
+    let cBlue  = new Color4(0.1,0.1,0.8);
+    
+    let color = c1;
+    function line(x0,y0,z0, x1,y1,z1) { 
+        pts.push([new Vector3(x0,y0,z0), new Vector3(x1,y1,z1)]); 
+        colors.push([color,color]); 
+    }
+    
+    
+    let r1 = r + 1;
+    let a1 = 0.2;
+    let a2 = 0.5;
+    
+    // x axis
+    color = cRed;
+    line(-r1,0,0, r1,0,0); 
+    line(r1,0,0, r1-a2,0,a1);
+    line(r1,0,0, r1-a2,0,-a1);
+        
+    // z axis
+    color = cBlue;
+    line(0,0,-r1, 0,0,r1); 
+    line(0,0,r1, a1,0,r1-a2);
+    line(0,0,r1,-a1,0,r1-a2);
+    
+    // y axis
+    color = cGreen;
+    line(0,-r1,0, 0,r1,0); 
+    line(0,r1,0, a1,r1-a2,0);
+    line(0,r1,0,-a1,r1-a2,0);
+    line(0,r1,0, 0,r1-a2,a1);
+    line(0,r1,0, 0,r1-a2,-a1);
+    
+    const lines = BABYLON.MeshBuilder.CreateLineSystem(
+        "lines", {
+                lines: pts,
+                colors: colors,
+                
+        }, 
+        scene);
+    return lines;    
+};
 
 
 
@@ -128,14 +236,7 @@ function populateScene() {
     let grid = createGrid(scene);
     grid.isPickable = false;
     
-    let srf = new Surface([
-        new BABYLON.Vector3(1,0,0),
-        new BABYLON.Vector3(2,1.25,0),
-        new BABYLON.Vector3(2,3.75,0),
-        new BABYLON.Vector3(1,5,0)
-    ], 50,50);
-    srf.mesh.isPickable = false;
-    window.srf = srf;
+    
 
     let dot = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.3}, scene);
     dot.isPickable = false;
@@ -143,12 +244,15 @@ function populateScene() {
     window.dot = dot;
 
     let plane = BABYLON.MeshBuilder.CreatePlane('plane', {
-        size:4
+        size:8
     }, scene);
-    plane.position.x = 2;
+    plane.position.x = 4;
     let material = plane.material = new BABYLON.StandardMaterial('plane-mat', scene);
     material.backFaceCulling = false;
     material.twoSidedLighting = true;
+    material.alpha = 0.5;
+    material.specularColor.set(0,0,0);
+    
 
     let actionManager = new BABYLON.ActionManager(scene);
     plane.actionManager = actionManager;
@@ -184,8 +288,9 @@ function populateScene() {
             pointerDown = true;
             console.log("detach")
             camera.inputs.attached.pointers.detachControl()
-            dot.position.copyFrom(pointerInfo.pickInfo.pickedPoint)
-            pts = [pointerInfo.pickInfo.pickedPoint.clone()];
+            let p = pointerInfo.pickInfo.pickedPoint;
+            dot.position.copyFrom(p.clone());
+            drawing.startStroke(p.clone());
         }
     }
 
@@ -195,7 +300,7 @@ function populateScene() {
         {
             pointerDown = false;
             camera.inputs.attached.pointers.attachControl();
-            BABYLON.MeshBuilder.CreateTube('a',{path:pts, radius:0.1},scene)
+            //BABYLON.MeshBuilder.CreateTube('a',{path:pts, radius:0.1},scene)
         }
         if(pointerInfo.pickInfo && pointerInfo.pickInfo.pickedPoint) {
             
@@ -207,11 +312,7 @@ function populateScene() {
             dot.isVisible = true;
             dot.position.copyFrom(pointerInfo.pickInfo.pickedPoint)
             if(pointerDown) {
-                pts.push(pointerInfo.pickInfo.pickedPoint.clone())
-                if(pts.length>=4) {
-                    srf.setCurvePts(pts);
-                    console.log(pts)
-                }    
+                drawing.lineTo(pointerInfo.pickInfo.pickedPoint.clone());
             }
         } else {
             dot.isVisible = false;
