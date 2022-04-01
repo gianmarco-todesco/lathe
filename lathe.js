@@ -45,7 +45,7 @@ class Curve {
 
     addPoint(p) {
         let d = p.subtract(this.pts[this.pts.length-1]).length();        
-        if(d<0.1) return;
+        if(d<0.2) return;
         this.pts.push(p.clone());
         if(this.pts.length>=4) {
             let curve = BABYLON.Curve3.CreateCatmullRomSpline(this.pts, 10, false);
@@ -116,7 +116,7 @@ class Surface {
         }
         let csn = new Array(2*this.m);
         for(let j=0; j<this.m; j++) {
-            let phi = 2*Math.PI*j/(this.m-1);
+            let phi = 1.5*Math.PI*j/(this.m-1);
             csn[j*2] = Math.cos(phi);
             csn[j*2+1] = Math.sin(phi);
         }
@@ -163,9 +163,40 @@ class Drawing {
         if(!stroke) return;
         stroke.curve.addPoint(p);
         if(stroke.curve.pts.length>=2) {
+            let strokePts = [];
+            const m = 200;
+            for(let i=0; i<m; i++) strokePts.push(stroke.curve.getPoint(i/(m-1)));
+            
+            if(!stroke.tube) {
+                stroke.tube = BABYLON.MeshBuilder.CreateTube('a', {
+                    path : strokePts,
+                    radius : 0.01,
+                    updatable : true
+                },scene);
+            } else  {
+                stroke.tube = BABYLON.MeshBuilder.CreateTube('a', {
+                    instance: stroke.tube,
+                    path : strokePts
+                });
+            }
+            
+
+            if(!stroke.dots) {
+                stroke.dots = [];
+                let sphere = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.06}, scene );
+                sphere.position.copyFrom(stroke.curve.pts[0]);
+                stroke.dots.push(sphere);
+            }
+            while(stroke.curve.pts.length > stroke.dots.length) {
+                let dot = stroke.dots[0].createInstance('d');
+                dot.position.copyFrom(stroke.curve.pts[stroke.dots.length])
+                stroke.dots.push(dot);
+            }
+    
             if(!stroke.surface) stroke.surface = new Surface(stroke.curve,100,100);
             else stroke.surface.setCurve(stroke.curve);
         }
+
     }
     
 }
@@ -238,11 +269,12 @@ function populateScene() {
     
     
 
-    let dot = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.3}, scene);
+    let dot = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.1}, scene);
     dot.isPickable = false;
 
     window.dot = dot;
 
+    // create paper sheet
     let plane = BABYLON.MeshBuilder.CreatePlane('plane', {
         size:8
     }, scene);
@@ -253,11 +285,45 @@ function populateScene() {
     material.alpha = 0.5;
     material.specularColor.set(0,0,0);
     
+    // GUI
+    let guiPlane = BABYLON.MeshBuilder.CreatePlane('plane', {width:4, height:1 }, scene);
+    guiPlane.position.y = 5;
+    guiPlane.position.x = 2;
+    
+    window.guiPlane = guiPlane;
+
+    
+    var guiTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateForMesh(guiPlane);
+    window.guiTexture = guiTexture;
+
+    var guiGrid = new BABYLON.GUI.Grid();
+    guiGrid.addColumnDefinition(100, true);
+    guiGrid.addColumnDefinition(0.5);
+    guiGrid.addColumnDefinition(0.5);
+    guiGrid.addColumnDefinition(100, true);
+    guiGrid.addRowDefinition(0.5);
+    guiGrid.addRowDefinition(0.5);
+    guiTexture.addControl(guiGrid);
+
+    for(let i=0; i<4; i++) {
+
+        var button = BABYLON.GUI.Button.CreateSimpleButton('a',"X");
+        button.width = 0.2;
+        button.height = 0.9;
+        button.color = "white";
+        button.fontSize = 100;
+        button.background = "green";
+        guiGrid.addControl(button, 0, i);
+        button.left = i*0.3;
+    
+    }
+    
+
 
     let actionManager = new BABYLON.ActionManager(scene);
     plane.actionManager = actionManager;
-
     /*
+
     actionManager.registerAction(
         new BABYLON.ExecuteCodeAction(
             BABYLON.ActionManager.OnPointerOverTrigger,
