@@ -2,6 +2,15 @@
 
 let canvas, engine, scene, camera;
 
+const colors = [
+    BABYLON.Color3.FromHexString("#2E6D9E"),
+    BABYLON.Color3.FromHexString("#546A7B"),
+    BABYLON.Color3.FromHexString("#9EA3B0"),
+    BABYLON.Color3.FromHexString("#FAE1DF"),
+    BABYLON.Color3.FromHexString("#E4C3AD"),
+    BABYLON.Color3.FromHexString("#B86E3D")
+];
+
 window.addEventListener('DOMContentLoaded', () => {
     // il tag canvas che visualizza l'animazione
     canvas = document.getElementById('c');
@@ -14,8 +23,8 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // camera
     camera = new BABYLON.ArcRotateCamera('cam', 
-            -Math.PI/2,0.7,
-            15, 
+            -Math.PI/2,Math.PI/2,
+            20, 
             new BABYLON.Vector3(0,0,0), 
             scene);
     camera.attachControl(canvas,true);
@@ -69,7 +78,7 @@ class Curve {
 }
 
 class Surface {
-    constructor(curve, n, m) {
+    constructor(curve, n, m, color) {
         this.n = n;
         this.m = m;
         this.positions = new Array(n*m*3).fill();
@@ -104,7 +113,7 @@ class Surface {
         material.backFaceCulling = false;
         material.twoSidedLighting = true;
         material.specularColor.set(0.3,0.3,0.3);
-        material.diffuseColor.set(0.2,0.3,0.7);
+        material.diffuseColor.copyFrom(color);
     }
 
 
@@ -150,6 +159,7 @@ class Surface {
 class Drawing {
     constructor() {
         this.strokes = [];
+        this.currentColor = colors[0];
 
     }    
     startStroke(p) {
@@ -193,12 +203,29 @@ class Drawing {
                 stroke.dots.push(dot);
             }
     
-            if(!stroke.surface) stroke.surface = new Surface(stroke.curve,100,100);
+            if(!stroke.surface) stroke.surface = new Surface(stroke.curve,100,100, this.currentColor);
             else stroke.surface.setCurve(stroke.curve);
+            
         }
 
     }
     
+    clear() {
+        this.strokes.forEach(stroke => {
+            stroke.surface.mesh.dispose();
+            stroke.tube.dispose();
+            stroke.dots.forEach(dot => dot.dispose());
+        })
+        this.strokes = [];
+    }
+
+    setCurrentColor(c) {
+        this.currentColor = c;
+        if(this.strokes.length>0) {
+            let stroke = this.strokes[this.strokes.length-1];
+            if(stroke.surface) stroke.surface.mesh.material.diffuseColor.copyFrom(c);
+        }
+    }
 }
 
 let drawing = new Drawing();
@@ -286,38 +313,56 @@ function populateScene() {
     material.specularColor.set(0,0,0);
     
     // GUI
-    let guiPlane = BABYLON.MeshBuilder.CreatePlane('plane', {width:4, height:1 }, scene);
+    const guiWidth = 8, guiHeight = 1;
+    let guiPlane = BABYLON.MeshBuilder.CreatePlane('plane', {width:guiWidth, height:guiHeight }, scene);
     guiPlane.position.y = 5;
-    guiPlane.position.x = 2;
+    guiPlane.position.x = guiWidth/2;
     
     window.guiPlane = guiPlane;
 
+    let dot2 = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.2}, scene);
+    dot2.parent = guiPlane;
+    dot2.position.set(guiWidth/2,guiHeight/2,0);
+    let dot3 = dot2.createInstance('dot3');
+    dot3.parent = guiPlane;
+    dot3.position.set(-guiWidth/2,-guiHeight/2,0);
+
     
-    var guiTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateForMesh(guiPlane);
+    var guiTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateForMesh(guiPlane, 1024, 128);
     window.guiTexture = guiTexture;
 
-    var guiGrid = new BABYLON.GUI.Grid();
-    guiGrid.addColumnDefinition(100, true);
-    guiGrid.addColumnDefinition(0.5);
-    guiGrid.addColumnDefinition(0.5);
-    guiGrid.addColumnDefinition(100, true);
-    guiGrid.addRowDefinition(0.5);
-    guiGrid.addRowDefinition(0.5);
-    guiTexture.addControl(guiGrid);
+    var button = BABYLON.GUI.Button.CreateSimpleButton('x',"X");
+    button.width = "128px";
+    button.height = "128px";
+    button.color = "black";
+    button.fontSize = 100;
+    button.background = "white";
+    guiTexture.addControl(button);
+    button.left = (-512 + 64) + "px";
+    button.onPointerClickObservable.add(function () {
+        drawing.clear();
+    }); 
 
-    for(let i=0; i<4; i++) {
+    let checkboxes = [];
+    for(let i=0; i<colors.length; i++) {
+        var checkbox = new BABYLON.GUI.Checkbox();
+        checkbox.width = "128px";
+        checkbox.height = "128px";
+        checkbox.isChecked = false;
+        checkbox.color = colors[i].toHexString();
+        checkbox.background = colors[i].scale(0.8).toHexString();
+        checkbox.onIsCheckedChangedObservable.add(function(value) {
+            if(value) {
+                for(let j=0; j<checkboxes.length; j++) if(i != j) checkboxes[j].isChecked = false;
+                drawing.setCurrentColor(colors[i]);
 
-        var button = BABYLON.GUI.Button.CreateSimpleButton('a',"X");
-        button.width = 0.2;
-        button.height = 0.9;
-        button.color = "white";
-        button.fontSize = 100;
-        button.background = "green";
-        guiGrid.addControl(button, 0, i);
-        button.left = i*0.3;
+            }
+        });
+        checkbox.left = (-512 + 250 + i*140) + "px";
+        guiTexture.addControl(checkbox);
+        checkboxes.push(checkbox);
     
     }
-    
 
 
     let actionManager = new BABYLON.ActionManager(scene);
