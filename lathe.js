@@ -23,8 +23,8 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // camera
     camera = new BABYLON.ArcRotateCamera('cam', 
-            -Math.PI/2,Math.PI/2,
-            20, 
+            -1.016, 1.214,
+            22, 
             new BABYLON.Vector3(0,0,0), 
             scene);
     camera.attachControl(canvas,true);
@@ -160,6 +160,10 @@ class Drawing {
     constructor() {
         this.strokes = [];
         this.currentColor = colors[0];
+        this.strokeMaterial = new BABYLON.StandardMaterial('stroke-mat', scene);
+        this.strokeMaterial.specularColor.set(0,0,0);
+        this.strokeMaterial.diffuseColor.set(0.2,0.2,0.2);
+        
 
     }    
     startStroke(p) {
@@ -183,6 +187,7 @@ class Drawing {
                     radius : 0.01,
                     updatable : true
                 },scene);
+                stroke.tube.material = this.strokeMaterial;
             } else  {
                 stroke.tube = BABYLON.MeshBuilder.CreateTube('a', {
                     instance: stroke.tube,
@@ -195,6 +200,7 @@ class Drawing {
                 stroke.dots = [];
                 let sphere = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.06}, scene );
                 sphere.position.copyFrom(stroke.curve.pts[0]);
+                sphere.material = this.strokeMaterial;
                 stroke.dots.push(sphere);
             }
             while(stroke.curve.pts.length > stroke.dots.length) {
@@ -228,7 +234,7 @@ class Drawing {
     }
 }
 
-let drawing = new Drawing();
+let drawing;
 
 
 function createGrid(scene) {
@@ -291,6 +297,8 @@ function createGrid(scene) {
 
 function populateScene() {
 
+    drawing = new Drawing();
+
     let grid = createGrid(scene);
     grid.isPickable = false;
     
@@ -311,6 +319,24 @@ function populateScene() {
     material.twoSidedLighting = true;
     material.alpha = 0.5;
     material.specularColor.set(0,0,0);
+    material.diffuseColor.set(1,1,1);
+
+    let tx = new BABYLON.DynamicTexture('plane-texture', {width:1024,height:1024}, scene);
+    material.diffuseTexture = tx;
+    let ctx = tx.getContext();
+    ctx.fillStyle="white";
+    ctx.fillRect(0,0,1024,1024);
+    ctx.fillStyle="#eee";
+    for(let i=0; i<=1024; i+=64) {
+        ctx.fillRect(i-3,0,7,1024);
+        ctx.fillRect(0,i-3,1024,7);
+    }
+    ctx.fillStyle="#ccc";
+    for(let i=0; i<=1024; i+=256) {
+        ctx.fillRect(i-3,0,7,1024);
+        ctx.fillRect(0,i-3,1024,7);
+    }
+    tx.update();
     
     // GUI
     const guiWidth = 8, guiHeight = 1;
@@ -320,12 +346,14 @@ function populateScene() {
     
     window.guiPlane = guiPlane;
 
+    /*
     let dot2 = BABYLON.MeshBuilder.CreateSphere('dot', {diameter:0.2}, scene);
     dot2.parent = guiPlane;
     dot2.position.set(guiWidth/2,guiHeight/2,0);
     let dot3 = dot2.createInstance('dot3');
     dot3.parent = guiPlane;
     dot3.position.set(-guiWidth/2,-guiHeight/2,0);
+    */
 
     
     var guiTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateForMesh(guiPlane, 1024, 128);
@@ -348,7 +376,7 @@ function populateScene() {
         var checkbox = new BABYLON.GUI.Checkbox();
         checkbox.width = "128px";
         checkbox.height = "128px";
-        checkbox.isChecked = false;
+        checkbox.isChecked = i==0;
         checkbox.color = colors[i].toHexString();
         checkbox.background = colors[i].scale(0.8).toHexString();
         checkbox.onIsCheckedChangedObservable.add(function(value) {
@@ -394,10 +422,10 @@ function populateScene() {
     let pts = [];
 
     function onPointerDown(pointerInfo) {
-        console.log(pointerInfo)
+        //console.log(pointerInfo)
         if(pointerInfo.pickInfo.pickedMesh == plane) {
             pointerDown = true;
-            console.log("detach")
+            //console.log("detach")
             camera.inputs.attached.pointers.detachControl()
             let p = pointerInfo.pickInfo.pickedPoint;
             dot.position.copyFrom(p.clone());
@@ -447,16 +475,16 @@ function populateScene() {
                 onPointerMove(pointerInfo);
                 break;
             case BABYLON.PointerEventTypes.POINTERWHEEL:
-                console.log("POINTER WHEEL");
+                //console.log("POINTER WHEEL");
                 break;
             case BABYLON.PointerEventTypes.POINTERPICK:
-                console.log("POINTER PICK");
+                //console.log("POINTER PICK");
                 break;
             case BABYLON.PointerEventTypes.POINTERTAP:
-                console.log("POINTER TAP");
+                //console.log("POINTER TAP");
                 break;
             case BABYLON.PointerEventTypes.POINTERDOUBLETAP:
-                console.log("POINTER DOUBLE-TAP");
+                //console.log("POINTER DOUBLE-TAP");
                 break;
         }
     });
